@@ -25,12 +25,29 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Install Gradle (with retry)
+      - name: Install Gradle (multi-mirror)
         run: |
-          curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors \
-            -o gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+          V="${GRADLE_VERSION}"
+          URLS=(
+            "https://services.gradle.org/distributions/gradle-${V}-bin.zip"
+            "https://github.com/gradle/gradle-distributions/releases/download/v${V}/gradle-${V}-bin.zip"
+            "https://mirrors.cloud.tencent.com/gradle/gradle-${V}-bin.zip"
+          )
+          ok=0
+          for round in 1 2 3; do
+            for u in "${URLS[@]}"; do
+              echo "Trying $u"
+              if curl -fsSL --retry 2 --retry-delay 5 --connect-timeout 20 -o gradle.zip "$u" && unzip -tq gradle.zip >/dev/null 2>&1; then
+                ok=1; break 2
+              fi
+              rm -f gradle.zip
+            done
+            echo "All mirrors failed in round $round, waiting 30s..."
+            sleep 30
+          done
+          [ "$ok" = 1 ] || { echo "Could not download Gradle from any mirror"; exit 1; }
           unzip -q gradle.zip -d "$HOME"
-          echo "$HOME/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+          echo "$HOME/gradle-${V}/bin" >> "$GITHUB_PATH"
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
